@@ -59,6 +59,6 @@ enum KeyMask {
         } else {
             prefix = key.prefix(3)
         }
-        return prefix + String(repeating: "*", count: 16) + key.suffix(4)
+        return String(prefix) + String(repeating: "*", count: 16) + String(key.suffix(4))
     }
 }
