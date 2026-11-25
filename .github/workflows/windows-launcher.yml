@@ -1,0 +1,57 @@
+name: Windows launcher
+
+on:
+  push:
+    paths: ["windows-launcher/**", ".github/workflows/windows-launcher.yml"]
+  pull_request:
+    paths: ["windows-launcher/**", ".github/workflows/windows-launcher.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows-launcher
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows-launcher/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows-launcher/src-tauri
+
+      - run: npm ci
+      - run: npm run typecheck
+
+      - name: Clippy
+        working-directory: windows-launcher/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Unit tests
+        working-directory: windows-launcher/src-tauri
+        run: cargo test
+
+      - name: Build installer
+        run: npx tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ndze-launcher-windows
+          path: |
+            windows-launcher/src-tauri/target/release/bundle/nsis/*.exe
+            windows-launcher/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error

@@ -1,0 +1,8 @@
+.DS_Store
+*.log
+
+ios-app/*.xcodeproj
+ios-app/NDZEAI/Info.plist
+ios-app/build
+ios-app/Payload
+ios-app/*.ipa

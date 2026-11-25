@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/api.ts","./src/format.ts","./src/main.tsx","./src/toast.tsx","./src/components/GameCard.tsx","./src/components/ProfileModal.tsx","./src/components/Toggle.tsx","./src/pages/Library.tsx","./src/pages/System.tsx","./src/pages/Tweaks.tsx","./vite.config.ts"],"version":"5.9.3"}
