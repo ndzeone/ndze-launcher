@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish, e.g. v0.2.0 (created from the selected branch if missing)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows-launcher
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows-launcher/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows-launcher/src-tauri
+      - run: npm ci
+      - name: Check version matches tag
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          test "v$VERSION" = "$TAG" || { echo "tauri.conf.json version v$VERSION != tag $TAG"; exit 1; }
+      - run: npx tauri build
+      - name: Collect installers
+        run: |
+          mkdir -p ../out
+          V=${TAG#v}
+          cp src-tauri/target/release/bundle/nsis/*-setup.exe "../out/NDZE-Launcher-$V-setup.exe"
+          cp src-tauri/target/release/bundle/msi/*.msi "../out/NDZE-Launcher-$V.msi"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*
+
+  ios:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios-app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build unsigned .ipa
+        run: |
+          set -o pipefail
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+          xcodebuild build -project NDZEAI.xcodeproj -scheme NDZEAI -configuration Release \
+            -sdk iphoneos -destination "generic/platform=iOS" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO | tail -3
+          mkdir -p Payload ../out
+          cp -R build/Build/Products/Release-iphoneos/NDZEAI.app Payload/
+          zip -qry "../out/NDZE-AI-${TAG#v}-unsigned.ipa" Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: out/*
+
+  publish:
+    needs: [windows, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        run: cd out && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: NDZE Launcher ${{ env.TAG }}
+          body_path: .github/releases/${{ env.TAG }}.md
+          make_latest: true
+          files: out/*

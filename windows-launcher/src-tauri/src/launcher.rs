@@ -167,11 +167,14 @@ fn boost_power(settings: &Settings) -> AppResult<String> {
     Ok(previous)
 }
 
+pub type OnExit = Box<dyn FnOnce(u64) + Send + 'static>;
+
 pub fn launch(
     app: AppHandle,
     session: ActiveSession,
     game: Game,
     settings: Settings,
+    on_exit: OnExit,
 ) -> AppResult<()> {
     {
         let mut active = session.lock().unwrap();
@@ -235,6 +238,7 @@ pub fn launch(
             thread::sleep(DETECT_INTERVAL);
         };
 
+        let mut played = 0;
         match pid {
             None => emit(
                 &app,
@@ -251,6 +255,7 @@ pub fn launch(
                     }
                 }
                 emit(&app, &id, Phase::Running, message);
+                let detected = Instant::now();
 
                 loop {
                     thread::sleep(EXIT_INTERVAL);
@@ -263,8 +268,10 @@ pub fn launch(
                         break;
                     }
                 }
+                played = detected.elapsed().as_secs();
             }
         }
+        on_exit(played);
 
         let mut message = String::from("Игра закрыта");
         if let Some(prev) = restore_plan {

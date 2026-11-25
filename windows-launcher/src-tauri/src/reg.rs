@@ -22,13 +22,14 @@ impl Hive {
 pub enum RegData {
     Dword(u32),
     Sz(String),
+    Binary(Vec<u8>),
 }
 
 impl RegData {
     pub fn as_str(&self) -> Option<&str> {
         match self {
             RegData::Sz(s) => Some(s),
-            RegData::Dword(_) => None,
+            _ => None,
         }
     }
 }
@@ -41,7 +42,7 @@ pub struct RegOp {
     pub data: Option<RegData>,
 }
 
-pub use imp::{is_elevated, read};
+pub use imp::{is_elevated, list_values, read};
 
 pub fn read_str(hive: Hive, path: &str, name: &str) -> AppResult<Option<String>> {
     Ok(read(hive, path, name)?.and_then(|d| d.as_str().map(str::to_owned)))
@@ -101,6 +102,12 @@ pub fn elevated_script(ops: &[&RegOp]) -> AppResult<String> {
                 ensure_safe(v)?;
                 format!("reg add \"{key}\" /v \"{name}\" /t REG_SZ /d \"{v}\" /f >nul || exit /b 1")
             }
+            Some(RegData::Binary(bytes)) => {
+                let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+                format!(
+                    "reg add \"{key}\" /v \"{name}\" /t REG_BINARY /d {hex} /f >nul || exit /b 1"
+                )
+            }
             None => format!("reg delete \"{key}\" /v \"{name}\" /f >nul 2>&1"),
         };
         script.push_str(&line);
@@ -159,8 +166,22 @@ mod imp {
                 let text = String::from_utf16_lossy(&wide);
                 Some(RegData::Sz(text.trim_end_matches('\0').to_owned()))
             }
+            RegType::REG_BINARY => Some(RegData::Binary(bytes.to_vec())),
             _ => None,
         }
+    }
+
+    pub fn list_values(hive: Hive, path: &str) -> AppResult<Vec<(String, RegData)>> {
+        let key = match root(hive).open_subkey_with_flags(path, KEY_READ) {
+            Ok(k) => k,
+            Err(e) if not_found(&e) => return Ok(Vec::new()),
+            Err(e) => return Err(e.into()),
+        };
+        Ok(key
+            .enum_values()
+            .filter_map(Result::ok)
+            .filter_map(|(name, value)| decode(&value).map(|d| (name, d)))
+            .collect())
     }
 
     pub fn write(hive: Hive, path: &str, name: &str, data: &RegData) -> AppResult<()> {
@@ -168,6 +189,13 @@ mod imp {
         match data {
             RegData::Dword(v) => key.set_value(name, v)?,
             RegData::Sz(s) => key.set_value(name, s)?,
+            RegData::Binary(bytes) => key.set_raw_value(
+                name,
+                &RegValue {
+                    bytes: bytes.clone(),
+                    vtype: RegType::REG_BINARY,
+                },
+            )?,
         }
         Ok(())
     }
@@ -210,6 +238,9 @@ mod imp {
     pub fn read(_: Hive, _: &str, _: &str) -> AppResult<Option<RegData>> {
         Ok(None)
     }
+    pub fn list_values(_: Hive, _: &str) -> AppResult<Vec<(String, RegData)>> {
+        Ok(Vec::new())
+    }
     pub fn write(_: Hive, _: &str, _: &str, _: &RegData) -> AppResult<()> {
         fail("Реестр доступен только в Windows")
     }
@@ -250,7 +281,9 @@ mod tests {
             Some(RegData::Sz("High".into())),
         );
         let c = op(r"SOFTWARE\Z", "Old", None);
-        let s = elevated_script(&[&a, &b, &c]).unwrap();
+        let d = op(r"SOFTWARE\B", "Bin", Some(RegData::Binary(vec![3, 0, 255])));
+        let s = elevated_script(&[&a, &b, &c, &d]).unwrap();
+        assert!(s.contains(r#"/t REG_BINARY /d 0300ff /f"#));
         assert!(s.contains(r#"reg add "HKLM\SOFTWARE\Microsoft\Windows NT\X" /v "GPU Priority" /t REG_DWORD /d 8 /f"#));
         assert!(s.contains(r#"/t REG_SZ /d "High" /f"#));
         assert!(s.contains(r#"reg delete "HKLM\SOFTWARE\Z" /v "Old" /f"#));

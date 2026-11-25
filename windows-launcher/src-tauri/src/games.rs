@@ -28,6 +28,8 @@ fn game(
         install_dir: dir.map(|d| d.display().to_string()),
         exe_path: exe.map(|e| e.display().to_string()),
         profile: GameProfile::default(),
+        favorite: false,
+        stats: Default::default(),
     }
 }
 

@@ -1,11 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod advisor;
+mod cleanup;
 mod error;
 mod games;
+mod hardware;
 mod launcher;
 mod power;
 mod profile;
 mod reg;
+mod startup;
 mod store;
 mod system;
 mod tweaks;
@@ -17,16 +21,17 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use sysinfo::System;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use error::{fail, AppResult};
 use launcher::ActiveSession;
-use store::{BoostPlan, Game, GameProfile, Settings, Store};
+use store::{now_secs, BoostPlan, Game, GameProfile, Settings, Store};
 
 struct AppState {
     store: Mutex<Store>,
     stats: Mutex<System>,
     session: ActiveSession,
+    hardware: Mutex<Option<hardware::HardwareReport>>,
 }
 
 impl AppState {
@@ -40,11 +45,6 @@ fn sorted_games(store: &Store) -> Vec<Game> {
     let mut games: Vec<Game> = store.config.games.values().cloned().collect();
     games.sort_by_key(|g| g.name.to_lowercase());
     games
-}
-
-#[tauri::command(async)]
-fn system_info() -> system::SystemInfo {
-    system::info()
 }
 
 #[tauri::command]
@@ -172,13 +172,44 @@ fn exe_candidates(state: State<AppState>, id: String) -> AppResult<Vec<games::Ex
 #[tauri::command(async)]
 fn launch_game(app: AppHandle, state: State<AppState>, id: String) -> AppResult<()> {
     let (game, settings) = state.with_store(|store| {
-        let game = store.config.games.get(&id).cloned();
+        let game = store.config.games.get_mut(&id).map(|g| {
+            g.stats.launches += 1;
+            g.stats.last_played = Some(now_secs());
+            g.clone()
+        });
+        store.save()?;
         Ok((game, store.config.settings.clone()))
     })?;
     let Some(game) = game else {
         return fail("Игра не найдена");
     };
-    launcher::launch(app, state.session.clone(), game, settings)
+
+    let handle = app.clone();
+    let on_exit: launcher::OnExit = Box::new(move |secs| {
+        let state = handle.state::<AppState>();
+        let _ = state.with_store(|store| {
+            if let Some(g) = store.config.games.get_mut(&id) {
+                g.stats.playtime_secs += secs;
+                g.stats.last_played = Some(now_secs());
+            }
+            store.save()
+        });
+        let _ = handle.emit("library-changed", ());
+    });
+    launcher::launch(app, state.session.clone(), game, settings, on_exit)
+}
+
+#[tauri::command(async)]
+fn toggle_favorite(state: State<AppState>, id: String) -> AppResult<Game> {
+    state.with_store(|store| {
+        let Some(game) = store.config.games.get_mut(&id) else {
+            return fail("Игра не найдена");
+        };
+        game.favorite = !game.favorite;
+        let updated = game.clone();
+        store.save()?;
+        Ok(updated)
+    })
 }
 
 #[tauri::command]
@@ -210,6 +241,74 @@ fn set_tweak(
 }
 
 #[tauri::command(async)]
+fn apply_tweaks(state: State<AppState>, ids: Vec<String>) -> AppResult<Vec<tweaks::TweakStatus>> {
+    state.with_store(|store| {
+        let result = tweaks::apply_many(&ids, &mut store.config);
+        store.save()?;
+        result
+    })?;
+    tweaks::list()
+}
+
+#[tauri::command(async)]
+fn hardware_report(state: State<AppState>, refresh: bool) -> hardware::HardwareReport {
+    let mut cache = state.hardware.lock().unwrap();
+    match cache.as_ref() {
+        Some(report) if !refresh => report.clone(),
+        _ => cache.insert(hardware::report()).clone(),
+    }
+}
+
+#[tauri::command(async)]
+fn pc_advice(state: State<AppState>) -> AppResult<advisor::Advice> {
+    let report = hardware_report(state.clone(), false);
+    let games: Vec<Game> = state
+        .store
+        .lock()
+        .unwrap()
+        .config
+        .games
+        .values()
+        .cloned()
+        .collect();
+    Ok(advisor::analyze(&report, &games, &tweaks::list()?))
+}
+
+#[tauri::command(async)]
+fn set_refresh_rate(
+    state: State<AppState>,
+    device: String,
+    hz: u32,
+) -> AppResult<hardware::HardwareReport> {
+    #[cfg(windows)]
+    win::set_refresh_rate(&device, hz)?;
+    #[cfg(not(windows))]
+    let _ = (&device, hz);
+    Ok(hardware_report(state, true))
+}
+
+#[tauri::command(async)]
+fn startup_items() -> AppResult<Vec<startup::StartupItem>> {
+    startup::list()
+}
+
+#[tauri::command(async)]
+fn set_startup(name: String, machine: bool, enabled: bool) -> AppResult<Vec<startup::StartupItem>> {
+    startup::set(&name, machine, enabled)?;
+    startup::list()
+}
+
+#[tauri::command(async)]
+fn cleanup_scan() -> Vec<cleanup::CleanTarget> {
+    cleanup::scan()
+}
+
+#[tauri::command(async)]
+fn cleanup_run(ids: Vec<String>) -> AppResult<cleanup::CleanResult> {
+    cleanup::run(&ids)
+}
+
+#[tauri::command(async)]
 fn power_schemes(state: State<AppState>) -> AppResult<Vec<power::PowerScheme>> {
     let ultimate = state.with_store(|s| Ok(s.config.settings.ultimate_guid.clone()))?;
     power::list(ultimate.as_deref())
@@ -231,6 +330,29 @@ fn enable_ultimate(state: State<AppState>) -> AppResult<Vec<power::PowerScheme>>
     power_schemes(state)
 }
 
+#[tauri::command(async)]
+fn delete_power_scheme(state: State<AppState>, guid: String) -> AppResult<Vec<power::PowerScheme>> {
+    let ultimate = state.with_store(|s| Ok(s.config.settings.ultimate_guid.clone()))?;
+    power::delete(&guid, ultimate.as_deref())?;
+    power_schemes(state)
+}
+
+#[tauri::command(async)]
+fn dedupe_power_schemes(state: State<AppState>) -> AppResult<(usize, Vec<power::PowerScheme>)> {
+    let ultimate = state.with_store(|s| Ok(s.config.settings.ultimate_guid.clone()))?;
+    let removed = power::remove_duplicates(ultimate.as_deref())?;
+    Ok((removed, power_schemes(state)?))
+}
+
+#[tauri::command(async)]
+fn set_minimize_on_launch(state: State<AppState>, enabled: bool) -> AppResult<Settings> {
+    state.with_store(|store| {
+        store.config.settings.minimize_on_launch = enabled;
+        store.save()?;
+        Ok(store.config.settings.clone())
+    })
+}
+
 #[tauri::command]
 fn get_settings(state: State<AppState>) -> Settings {
     state.store.lock().unwrap().config.settings.clone()
@@ -248,17 +370,18 @@ fn set_boost_plan(state: State<AppState>, plan: BoostPlan) -> AppResult<Settings
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let path = app.path().app_data_dir()?.join("config.json");
             app.manage(AppState {
                 store: Mutex::new(Store::load(path)),
                 stats: Mutex::new(system::stats_system()),
                 session: Arc::new(Mutex::new(None)),
+                hardware: Mutex::new(None),
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            system_info,
             live_stats,
             list_processes,
             list_games,
@@ -268,10 +391,22 @@ fn main() {
             update_game,
             exe_candidates,
             launch_game,
+            toggle_favorite,
             active_session,
             list_tweaks,
             set_tweak,
+            apply_tweaks,
+            hardware_report,
+            pc_advice,
+            set_refresh_rate,
+            startup_items,
+            set_startup,
+            cleanup_scan,
+            cleanup_run,
             power_schemes,
+            delete_power_scheme,
+            dedupe_power_schemes,
+            set_minimize_on_launch,
             set_power_scheme,
             enable_ultimate,
             get_settings,

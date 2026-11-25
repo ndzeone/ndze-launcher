@@ -12,20 +12,9 @@ pub struct GpuInfo {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SystemInfo {
-    pub os: String,
-    pub cpu: String,
-    pub physical_cores: Option<usize>,
-    pub threads: usize,
-    pub total_memory: u64,
-    pub gpus: Vec<GpuInfo>,
-    pub elevated: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LiveStats {
     pub cpu: f32,
+    pub cores: Vec<f32>,
     pub memory_used: u64,
     pub memory_total: u64,
 }
@@ -46,32 +35,12 @@ pub fn stats_system() -> System {
     )
 }
 
-pub fn info() -> SystemInfo {
-    let sys = System::new_with_specifics(
-        RefreshKind::nothing()
-            .with_cpu(CpuRefreshKind::everything())
-            .with_memory(MemoryRefreshKind::nothing().with_ram()),
-    );
-    SystemInfo {
-        os: System::long_os_version().unwrap_or_else(|| "Unknown OS".into()),
-        cpu: sys
-            .cpus()
-            .first()
-            .map(|c| c.brand().trim().to_owned())
-            .unwrap_or_default(),
-        physical_cores: System::physical_core_count(),
-        threads: sys.cpus().len(),
-        total_memory: sys.total_memory(),
-        gpus: gpus(),
-        elevated: crate::reg::is_elevated(),
-    }
-}
-
 pub fn live(sys: &mut System) -> LiveStats {
     sys.refresh_cpu_usage();
     sys.refresh_memory_specifics(MemoryRefreshKind::nothing().with_ram());
     LiveStats {
         cpu: sys.global_cpu_usage(),
+        cores: sys.cpus().iter().map(|c| c.cpu_usage()).collect(),
         memory_used: sys.used_memory(),
         memory_total: sys.total_memory(),
     }
@@ -98,14 +67,4 @@ pub fn processes() -> Vec<ProcessInfo> {
     let mut list: Vec<_> = grouped.into_values().collect();
     list.sort_by_key(|p| std::cmp::Reverse(p.memory));
     list
-}
-
-#[cfg(windows)]
-fn gpus() -> Vec<GpuInfo> {
-    crate::win::gpus()
-}
-
-#[cfg(not(windows))]
-fn gpus() -> Vec<GpuInfo> {
-    Vec::new()
 }

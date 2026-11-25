@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { FolderOpen, Trash2, X } from "lucide-react";
 import { api, errorText, type ExeCandidate, type Game, type GameProfile, type Priority, type ProcessInfo } from "../api";
 import { fileName, formatBytes } from "../format";
 import { useToast } from "../toast";
@@ -95,7 +96,7 @@ export function ProfileModal({ game, onClose, onSaved, onRemoved }: Props) {
             <p className="muted small">{game.installDir ?? "Папка не определена"}</p>
           </div>
           <button className="btn icon ghost" onClick={onClose} aria-label="Закрыть">
-            ✕
+            <X size={18} />
           </button>
         </header>
 
@@ -113,7 +114,7 @@ export function ProfileModal({ game, onClose, onSaved, onRemoved }: Props) {
                 ))}
               </select>
               <button className="btn" onClick={browse}>
-                Обзор…
+                <FolderOpen size={15} /> Обзор…
               </button>
             </div>
             <p className="hint">
@@ -209,7 +210,7 @@ export function ProfileModal({ game, onClose, onSaved, onRemoved }: Props) {
         <footer className="modal-footer">
           {game.source.kind === "manual" ? (
             <button className="btn danger" onClick={remove}>
-              Удалить из библиотеки
+              <Trash2 size={15} /> Удалить из библиотеки
             </button>
           ) : (
             <span />

@@ -6,3 +6,4 @@ ios-app/NDZEAI/Info.plist
 ios-app/build
 ios-app/Payload
 ios-app/*.ipa
+*.tsbuildinfo

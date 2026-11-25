@@ -9,6 +9,12 @@ use windows::Win32::Globalization::{MultiByteToWideChar, CP_OEMCP, MULTI_BYTE_TO
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE,
 };
+use windows::Win32::Graphics::Gdi::{
+    ChangeDisplaySettingsExW, EnumDisplayDevicesW, EnumDisplaySettingsW, CDS_TEST,
+    CDS_UPDATEREGISTRY, DEVMODEW, DISPLAY_DEVICEW, DISPLAY_DEVICE_ATTACHED_TO_DESKTOP,
+    DISPLAY_DEVICE_PRIMARY_DEVICE, DISP_CHANGE_RESTART, DISP_CHANGE_SUCCESSFUL,
+    DM_DISPLAYFREQUENCY, ENUM_CURRENT_SETTINGS, ENUM_DISPLAY_SETTINGS_MODE,
+};
 use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
 use windows::Win32::System::Threading::{
     GetCurrentProcess, GetExitCodeProcess, OpenProcess, OpenProcessToken, SetPriorityClass,
@@ -21,6 +27,7 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_SHOWNORMAL};
 
 use crate::error::{fail, AppError, AppResult};
+use crate::hardware::DisplayInfo;
 use crate::store::Priority;
 use crate::system::GpuInfo;
 
@@ -170,4 +177,147 @@ pub fn gpus() -> Vec<GpuInfo> {
         });
     }
     result
+}
+
+fn wide_to_string(buf: &[u16]) -> String {
+    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    String::from_utf16_lossy(&buf[..end]).trim().to_owned()
+}
+
+fn devmode() -> DEVMODEW {
+    DEVMODEW {
+        dmSize: size_of::<DEVMODEW>() as u16,
+        ..Default::default()
+    }
+}
+
+fn current_mode(device: &HSTRING) -> Option<DEVMODEW> {
+    let mut mode = devmode();
+    unsafe { EnumDisplaySettingsW(device, ENUM_CURRENT_SETTINGS, &mut mode) }
+        .as_bool()
+        .then_some(mode)
+}
+
+/// Refresh rates supported at the current resolution and colour depth.
+fn supported_rates(device: &HSTRING, current: &DEVMODEW) -> Vec<u32> {
+    let mut rates = Vec::new();
+    for index in 0.. {
+        let mut mode = devmode();
+        if !unsafe { EnumDisplaySettingsW(device, ENUM_DISPLAY_SETTINGS_MODE(index), &mut mode) }
+            .as_bool()
+        {
+            break;
+        }
+        if mode.dmPelsWidth == current.dmPelsWidth
+            && mode.dmPelsHeight == current.dmPelsHeight
+            && mode.dmBitsPerPel == current.dmBitsPerPel
+            && !rates.contains(&mode.dmDisplayFrequency)
+        {
+            rates.push(mode.dmDisplayFrequency);
+        }
+    }
+    rates.sort_unstable();
+    rates
+}
+
+pub fn displays() -> Vec<DisplayInfo> {
+    let mut result = Vec::new();
+    for index in 0.. {
+        let mut adapter = DISPLAY_DEVICEW {
+            cb: size_of::<DISPLAY_DEVICEW>() as u32,
+            ..Default::default()
+        };
+        if !unsafe { EnumDisplayDevicesW(PCWSTR::null(), index, &mut adapter, 0) }.as_bool() {
+            break;
+        }
+        if !adapter
+            .StateFlags
+            .contains(DISPLAY_DEVICE_ATTACHED_TO_DESKTOP)
+        {
+            continue;
+        }
+        let device = wide_to_string(&adapter.DeviceName);
+        let device_w = HSTRING::from(device.as_str());
+        let Some(current) = current_mode(&device_w) else {
+            continue;
+        };
+
+        let mut monitor = DISPLAY_DEVICEW {
+            cb: size_of::<DISPLAY_DEVICEW>() as u32,
+            ..Default::default()
+        };
+        let name = if unsafe { EnumDisplayDevicesW(&device_w, 0, &mut monitor, 0) }.as_bool() {
+            wide_to_string(&monitor.DeviceString)
+        } else {
+            device.clone()
+        };
+
+        let rates = supported_rates(&device_w, &current);
+        result.push(DisplayInfo {
+            name,
+            width: current.dmPelsWidth,
+            height: current.dmPelsHeight,
+            refresh: current.dmDisplayFrequency,
+            max_refresh: rates.last().copied().unwrap_or(current.dmDisplayFrequency),
+            rates,
+            primary: adapter.StateFlags.contains(DISPLAY_DEVICE_PRIMARY_DEVICE),
+            device,
+        });
+    }
+    result
+}
+
+pub fn set_refresh_rate(device: &str, hz: u32) -> AppResult<()> {
+    let device_w = HSTRING::from(device);
+    let Some(mut mode) = current_mode(&device_w) else {
+        return fail(format!("Монитор {device} не найден"));
+    };
+    if !supported_rates(&device_w, &mode).contains(&hz) {
+        return fail(format!(
+            "Монитор не поддерживает {hz} Гц при текущем разрешении"
+        ));
+    }
+    mode.dmDisplayFrequency = hz;
+    mode.dmFields = DM_DISPLAYFREQUENCY;
+    unsafe {
+        if ChangeDisplaySettingsExW(&device_w, Some(&mode), None, CDS_TEST, None)
+            != DISP_CHANGE_SUCCESSFUL
+        {
+            return fail("Windows отклонил этот режим монитора");
+        }
+        match ChangeDisplaySettingsExW(&device_w, Some(&mode), None, CDS_UPDATEREGISTRY, None) {
+            DISP_CHANGE_SUCCESSFUL => Ok(()),
+            DISP_CHANGE_RESTART => fail("Частота сохранена, применится после перезагрузки"),
+            other => fail(format!("Не удалось сменить частоту (код {})", other.0)),
+        }
+    }
+}
+
+/// Details that only WMI exposes (RAM modules, GPU driver, board, chassis),
+/// fetched in one PowerShell call because it takes about a second.
+pub fn cim_details() -> Option<serde_json::Value> {
+    const SCRIPT: &str = "[Console]::OutputEncoding=[Text.Encoding]::UTF8;\
+        $m=@(Get-CimInstance Win32_PhysicalMemory | Select-Object Capacity,Speed,ConfiguredClockSpeed,Manufacturer,PartNumber,SMBIOSMemoryType,DeviceLocator);\
+        $g=@(Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion);\
+        $b=Get-CimInstance Win32_BaseBoard | Select-Object Manufacturer,Product;\
+        $os=Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber,OSArchitecture;\
+        $c=Get-CimInstance Win32_Processor | Select-Object -First 1 Name,MaxClockSpeed,NumberOfCores,L2CacheSize,L3CacheSize;\
+        $cs=Get-CimInstance Win32_ComputerSystem | Select-Object PCSystemType;\
+        @{memory=$m;gpus=$g;board=$b;os=$os;cpu=$c;system=$cs} | ConvertTo-Json -Depth 4 -Compress";
+    let output = hidden_command("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            SCRIPT,
+        ])
+        .output()
+        .ok()?;
+    let bytes = output
+        .stdout
+        .strip_prefix(&[0xEF, 0xBB, 0xBF])
+        .unwrap_or(&output.stdout);
+    serde_json::from_slice(bytes).ok()
 }

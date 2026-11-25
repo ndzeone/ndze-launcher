@@ -232,25 +232,38 @@ pub fn list() -> AppResult<Vec<TweakStatus>> {
 }
 
 pub fn apply(id: &str, config: &mut Config) -> AppResult<()> {
-    let tweak = find(id)?;
-    let values = tweak
-        .entries
-        .iter()
-        .map(current)
-        .collect::<AppResult<Vec<_>>>()?;
+    apply_many(&[id.to_owned()], config)
+}
 
-    let ops: Vec<RegOp> = tweak
-        .entries
-        .iter()
-        .zip(&values)
-        .map(|(entry, value)| match &entry.change {
-            Change::Value(target, _) => op(entry, Some(target.clone())),
-            Change::Pair(key, target) => pair_op(entry, value.as_ref(), key, Some(target)),
-        })
-        .collect();
+/// All registry writes of all requested tweaks go through one `reg::apply`,
+/// so several HKLM tweaks still cost the user a single UAC prompt.
+pub fn apply_many(ids: &[String], config: &mut Config) -> AppResult<()> {
+    let mut ops = Vec::new();
+    let mut backups = Vec::new();
+    for id in ids {
+        let tweak = find(id)?;
+        let values = tweak
+            .entries
+            .iter()
+            .map(current)
+            .collect::<AppResult<Vec<_>>>()?;
+        ops.extend(
+            tweak
+                .entries
+                .iter()
+                .zip(&values)
+                .map(|(entry, value)| match &entry.change {
+                    Change::Value(target, _) => op(entry, Some(target.clone())),
+                    Change::Pair(key, target) => pair_op(entry, value.as_ref(), key, Some(target)),
+                }),
+        );
+        backups.push((id.clone(), values));
+    }
 
     reg::apply(&ops)?;
-    config.backups.entry(id.to_owned()).or_insert(values);
+    for (id, values) in backups {
+        config.backups.entry(id).or_insert(values);
+    }
     Ok(())
 }
 
