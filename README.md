@@ -1,4 +1,83 @@
+<div align="center">
+
 # NDZE
+
+**Gaming utilities for Windows and a flexible AI client for iOS**
+
+![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
+![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Swift](https://img.shields.io/badge/Swift-SwiftUI-F05138?logo=swift&logoColor=white)
+
+[Website](https://ndzeone.github.io/ndze-launcher/) · [Releases](https://github.com/ndzeone/ndze-launcher/releases) · [Report an issue](https://github.com/ndzeone/ndze-launcher/issues) · [Русская документация](#русская-документация)
+
+</div>
+
+## About
+
+NDZE is an independently maintained, early-stage software project combining a Windows gaming launcher, an iOS client for user-configured AI services, and a project website. The goal is to make game management, transparent system configuration and access to AI APIs more convenient.
+
+| Component | Purpose | Technology |
+| --- | --- | --- |
+| [Windows launcher](windows-launcher) | Game library and Windows 11 optimization | Rust, Tauri 2, React 19, TypeScript, Vite |
+| [iOS app](ios-app) | AI chat client for custom API endpoints | SwiftUI, SwiftData, Keychain |
+| [Website](website) | Project website | React, TypeScript, Vite |
+
+## Windows launcher
+
+- Detect Steam and Epic Games libraries and add executables manually.
+- Manage favorites, playtime, launch counts and per-game profiles.
+- Configure GPU preferences, power plans and process priorities.
+- Inspect hardware, startup applications and temporary files.
+- Restore saved Windows tweak settings when toggles are disabled.
+
+Performance improvements vary by hardware and workload. The launcher is designed for Windows 11; Linux UI development uses stubs for Windows-specific functionality.
+
+## NDZE AI for iOS
+
+- OpenAI-compatible Chat Completions, Anthropic Messages and configurable custom API formats.
+- Multiple server connections, streamed responses, Markdown and local chat history.
+- API keys stored in the device Keychain.
+- iOS 17+; a compatible iPhone is required.
+
+Users supply their own API endpoints and credentials. API access and any associated charges are separate from the app.
+
+## Getting started
+
+Windows development requires Rust, Node.js 22+, Visual Studio C++ Build Tools and WebView2.
+
+```bash
+git clone https://github.com/ndzeone/ndze-launcher.git
+cd ndze-launcher/windows-launcher
+npm ci
+npm run tauri dev
+```
+
+Build with `npm run tauri build`. For iOS development, use macOS, Xcode and XcodeGen. See the detailed Russian documentation below for build, signing and release instructions.
+
+## Security and development
+
+The project aims to minimize elevated privileges, preserve reversible settings and protect API credentials. These are design goals and documented behaviors, not a guarantee of security. Please avoid sharing credentials or sensitive diagnostics in public issues.
+
+## Roadmap
+
+Planned priorities:
+
+- Improve automated tests and build reliability.
+- Review dependencies, privileged operations and credential handling.
+- Improve documentation and accessibility.
+- Gather feedback and prepare stable releases.
+
+## Feedback and licensing
+
+Bug reports and suggestions are welcome through [GitHub Issues](https://github.com/ndzeone/ndze-launcher/issues). Include your platform, application version and steps to reproduce, without secrets or private information.
+
+The repository is publicly visible, but an open-source license has not yet been selected. Public visibility alone does not grant permission to redistribute or modify the code.
+
+---
+
+## Русская документация
 
 **Сайт:** https://ndzeone.github.io/ndze-launcher/ · **Скачать:** [последний релиз](https://github.com/ndzeone/ndze-launcher/releases/latest)
 
