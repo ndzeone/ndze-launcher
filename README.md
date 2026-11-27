@@ -4,6 +4,7 @@
 
 **Gaming utilities for Windows and a flexible AI client for iOS**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
@@ -73,7 +74,9 @@ Planned priorities:
 
 Bug reports and suggestions are welcome through [GitHub Issues](https://github.com/ndzeone/ndze-launcher/issues). Include your platform, application version and steps to reproduce, without secrets or private information.
 
-The repository is publicly visible, but an open-source license has not yet been selected. Public visibility alone does not grant permission to redistribute or modify the code.
+The project's original code is available under the [MIT License](LICENSE). Third-party materials remain subject to their own licenses.
+
+Read the [contribution guide](CONTRIBUTING.md), [security policy](SECURITY.md), and [community guide](COMMUNITY.md) to get involved.
 
 ---
 
