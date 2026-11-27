@@ -1,3 +1,4 @@
+import { SpotifyPlayer } from "./components/DesktopTools";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
@@ -82,6 +83,7 @@ function Shell() {
           ))}
         </nav>
         <div className="sidebar-footer">
+          <SpotifyPlayer />
           {running && (
             <div className="session-pill">
               <span className="pulse" />

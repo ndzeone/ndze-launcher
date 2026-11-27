@@ -1,3 +1,4 @@
+import { DesktopTools } from "../components/DesktopTools";
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -31,6 +32,7 @@ export function Settings() {
   return (
     <section className="page narrow">
       <PageHeader icon={SettingsIcon} title="Настройки" />
+      <DesktopTools />
 
       <div className="card list">
         <div className="list-row">

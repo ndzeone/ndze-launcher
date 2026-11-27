@@ -188,3 +188,15 @@ details p { padding: 0 22px 20px; color: var(--muted); line-height: 1.65; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+:root { --accent:#f1c8ff; --accent-2:#a291ff; --ink:#191124; }
+.hero { position:relative; isolation:isolate; background:radial-gradient(ellipse at 85% 15%,#45315788,transparent 53%),linear-gradient(165deg,#171421,#08090d 70%); }
+.hero::before { content:""; position:absolute; inset:0; z-index:-1; background-image:linear-gradient(#c4b0ff0d 1px,transparent 1px),linear-gradient(90deg,#c4b0ff0d 1px,transparent 1px); background-size:56px 56px; mask-image:linear-gradient(#000,transparent); }
+.hero-shot .window { box-shadow:0 20px 80px #0009,0 0 65px #966de52a; border-color:#84718e; }
+.btn.primary:hover { background:#e4d2ff; box-shadow:0 9px 36px #b994ee44; }
+.community { padding-block:clamp(42px,8vw,96px); }
+.community h2 { font-size:clamp(30px,4vw,54px); letter-spacing:-.045em; }
+.community-grid { margin-top:28px; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,215px),1fr)); gap:14px; }
+.community article { padding:26px; border:1px solid #433c50; border-radius:22px; background:radial-gradient(ellipse at top right,#40324d,transparent 68%),#17151b; }
+.community article svg { color:var(--accent); margin-bottom:30px; }
+.community article p { color:#bcb5c6; margin-top:8px; line-height:1.5; }

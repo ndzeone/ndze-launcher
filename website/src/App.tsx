@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowRight, BatteryCharging, ChevronDown, CircleCheck, Clock, Cpu, Download, Gamepad2, KeyRound, Lock,
-  Menu, MessageSquare, Monitor, Rocket, ShieldCheck, Smartphone, Sparkles, Trash2, Undo2, X, Zap,
+  Bot, Radio, Headphones, Video, Menu, MessageSquare, Monitor, Rocket, ShieldCheck, Smartphone, Sparkles, Trash2, Undo2, X, Zap,
   type LucideIcon,
 } from "lucide-react";
 import { LATEST_URL, RELEASES_URL, REPO, formatSize, useLatestRelease } from "./release";
@@ -79,7 +79,7 @@ function Nav() {
   const [open, setOpen] = useState(false);
   const links = [
     ["#features", "Возможности"],
-    ["#config", "Под ваш ПК"],
+    ["#community", "Сообщество"],
     ["#screens", "Скриншоты"],
     ["#ios", "iPhone"],
     ["#faq", "FAQ"],
@@ -127,15 +127,14 @@ function Hero() {
     <section className="hero" id="top">
       <div className="container hero-inner">
         <div className="hero-copy">
-          <span className="pill"><Sparkles size={14} /> Новое в 0.2 — конфигурация под ваш ПК</span>
+          <span className="pill"><Sparkles size={14} /> NDZE Launcher для Windows</span>
           <h1>
-            Больше FPS.
+            Твои игры.
             <br />
-            <span className="gradient">Без магии.</span>
+            <span className="gradient">Твой ритм.</span>
           </h1>
           <p className="lead">
-            Бесплатный лаунчер-оптимизатор для Windows 11. Он изучает ваше железо, находит узкое место и включает только те настройки,
-            которые реально работают. Никаких «чистильщиков RAM» и обещаний +200% FPS.
+            Соберите Steam и Epic в одной библиотеке. Подберите настройки под своё железо и переключайте треки Spotify прямо в лаунчере.
           </p>
           <div className="hero-actions">
             <DownloadButton large />
@@ -382,6 +381,15 @@ export function App() {
         <Screens />
         <Safety />
         <IOS />
+        <section className="container community" id="community">
+          <h2>Скоро в сообществе NDZE</h2>
+          <div className="community-grid">{([
+            [Bot, "Telegram-бот", "Команды и быстрый доступ к проекту"],
+            [Radio, "Telegram-канал", "Новости и заметки о релизах"],
+            [Headphones, "Discord", "Общение и обратная связь"],
+            [Video, "YouTube", "Обзоры функций и видеоинструкции"],
+          ] as const).map(([Icon, title, detail]) => <article key={title}><Icon size={28}/><h3>{title}</h3><p>{detail}</p></article>)}</div>
+        </section>
         <Faq />
         <Cta />
       </main>

@@ -367,6 +367,8 @@ fn set_boost_plan(state: State<AppState>, plan: BoostPlan) -> AppResult<Settings
     })
 }
 
+mod desktop;
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -382,6 +384,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            desktop::defender_scan,
+            desktop::spotify,
             live_stats,
             list_processes,
             list_games,
